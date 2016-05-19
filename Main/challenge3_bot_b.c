@@ -16,9 +16,9 @@
 #define INVESTIGATE 3
 #define FEEDING 4
 #define WANDER 5
-#define FULL 100
-#define HUNGRY 50
-#define DANGER 25
+#define FULL 120
+#define HUNGRY 60
+#define DANGER 30
 #define DEAD 0
 #define STOP 0
 
@@ -233,11 +233,33 @@ task getReadingTask()
 	}
 }
 
+task energyRate()
+{
+	while(true)
+	{
+		if(energyLevel<=0)
+			break;
+		else
+		{
+			while(FEEDING && energyLevel<=FULL)
+			{
+				energyLevel++;
+				wait1Msec(1000);
+			}
+			while(!FEEDING && energyLevel>0)
+			{
+				energyLevel--;
+				wait1Msec(2000);
+			}
+		}
+	}
+}
 task main()
 {
 	startTask(runMotors);
 	startTask(getReadingTask);
 	startTask(invertMotorsTask);
+	startTask(energyRate);
 	int State;
 
 	energyLevel = FULL;
@@ -252,6 +274,7 @@ task main()
 	feedRSpeed = 0;
 	wanderLSpeed = 0;
 	wanderRSpeed = 0;
+	distance = SensorValue[ultraSonic];
 	//nxtEnableHSPort();
 	//nxtSetHSBaudRate(9600);  // can go as high as 921600 BAUD
 	//nxtHS_Mode = hsRawMode;
@@ -260,7 +283,6 @@ task main()
 	//	nxtReadRawHS(reply, 2);
 	while(true)
 	{
-		distance = SensorValue[ultraSonic];
 		if(death) {
 			State = DEATH;
 			} else if (obstacle) {
