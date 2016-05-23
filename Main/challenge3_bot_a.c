@@ -7,7 +7,31 @@
 * THIS ROBOT CONTROLS THE TOP LIGHT SENSOR, AND THE TWO BUMPERS
 */
 
-ubyte data[] = {'n', 'n', 'n'};
+ubyte data[] = {'n', 'n', 'n'};//{'LeftBumper', 'RightBumper', 'TopLight'}
+
+task bumpChecker()
+{
+	while(true)
+	{
+		//if left bumb -> move right
+		if (SensorValue(leftBumper)==1)
+		{
+			data[0] = 'y';
+		}
+		else
+			//if right bump -> move left
+		if (SensorValue(rightBumper)==1)
+		{
+			data[1] = 'y';
+		}
+	}
+}
+
+void transmitData()
+{
+	nxtWriteRawHS(&data[0], 3);
+	data[0] = 'n'; data[1] = 'n'; data[2] = 'n';
+}
 
 task main()
 {
@@ -15,9 +39,10 @@ task main()
 	nxtSetHSBaudRate(9600);  // can go as high as 921600 BAUD
 	nxtHS_Mode = hsRawMode;
 	wait1Msec(2000);
-}
-
-void transmitData()
-{
-	nxtWriteRawHS(&data[0], 3);
+	startTask(bumpChecker);
+	while(true)
+	{
+		wait1Msec(200);
+		transmitData();
+	}
 }

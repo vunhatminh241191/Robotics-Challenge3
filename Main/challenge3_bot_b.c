@@ -28,7 +28,7 @@
 
 //flags
 bool death;
-bool obstacle;
+//bool obstacle;
 bool escape;
 bool feeding;
 int energyLevel;
@@ -50,6 +50,7 @@ int wanderRSpeed;
 int lSpeed, rSpeed = 0;
 
 int distance;
+ubyte data[3];
 
 /**
 *This function finds the speed proportional to the distance
@@ -186,19 +187,107 @@ void drunkTurn()
 	rSpeed = BASESPEED;
 }
 
+//This function is called when both bumpers have read a value. the robot
+//beeps, backs up, then waits for 2 seconds. Then it chooses a random direction
+//and turns in that direction for a random amount of time.
+void bothD()
+{
+	playTone(2400, 100);
+	rSpeed = -1*BASESPEED;
+	lSpeed = -1*BASESPEED;
+	wait1Msec(500);
+	lSpeed = 0;
+	rSpeed = 0;
+	wait1Msec(2000);
+	int randTemp = (random[6]+2)*250;
+	if(random[2])
+	{
+		rSpeed = BASESPEED;
+		lSpeed = -1*(BASESPEED-25);
+		wait1Msec(randTemp);
+	}
+	else
+	{
+		rSpeed = -1*(BASESPEED-25);
+		lSpeed = BASESPEED;
+		wait1Msec(randTemp);
+	}
+}
+
+//When a left bumb is detected wait 100ms.
+//If in this 100ms we detect the right bumper as well, then we stop both motors
+//and proceed with the bothD() function. Otherwise, we stop both motors, reverse
+//for a little, and then turn a random amount to the right.
+void leftD()
+{
+	wait1Msec(100); //wait .1 sec
+	if(data[1] == 'y') //check to see if perpendicular
+	{
+		lSpeed = 0;
+		rSpeed = 0;
+		bothD(); //if perpendicular
+	}
+	else //if not perpendicular, follow normal procedure
+	{
+		lSpeed = 0;
+		rSpeed = 0;
+		wait1Msec(50);
+		rSpeed = -1*BASESPEED; //back up half a second
+		lSpeed = -1*BASESPEED;
+		wait1Msec(500);
+		rSpeed = BASESPEED; //turn left
+		lSpeed = -1*BASESPEED;
+		wait1Msec((random[4]+3)*100); //500
+	}
+}
+
+//When a right bumb is detected wait 100ms.
+//If in this 100ms we detect the left bumper as well, then we stop both motors
+//and proceed with the bothD() function. Otherwise, we stop both motors, reverse
+//for a little, and then turn a random amount to the left.
+void rightD()
+{
+	wait1Msec(100); //wait .1 sec
+	if(data[0]=='y') //check to see if perpendicular
+	{
+		lSpeed = 0;
+		rSpeed = 0;
+		bothD(); //if perpendicular
+	}
+	else //if not perpendicular, follow normal procedure
+	{
+		lSpeed = 0;
+		rSpeed = 0;
+		wait1Msec(50);
+		lSpeed = -1*BASESPEED;
+		rSpeed = -1*BASESPEED;
+		wait1Msec(500);
+		rSpeed = -1*BASESPEED;
+		lSpeed = BASESPEED;
+		wait1Msec((random[4]+3)*100); //500
+	}
+}
+
+void obstacle()
+{
+	if(data[0]=='y')
+		leftD();
+	else
+		rightD();
+}
+
 task commTask()
 {
 	nxtEnableHSPort();
 	nxtSetHSBaudRate(9600);  // can go as high as 921600 BAUD
 	nxtHS_Mode = hsRawMode;
-	ubyte reply[3];
 	while(true)
 	{
 		while (nxtGetAvailHSBytes() < 4) EndTimeSlice(); // wait for the two bytes to come in.
 		{
 			eraseDisplay();
-			nxtReadRawHS(&reply[0], 3*sizeof(ubyte));
-			displayCenteredBigTextLine(3, "%c%c%c", reply[0], reply[1], reply[2]);
+			nxtReadRawHS(&data[0], 3*sizeof(ubyte));
+			displayCenteredBigTextLine(3, "%c%c%c", data[0], data[1], data[2]);
 		}
 	}
 }
@@ -300,7 +389,7 @@ task main()
 	{
 		if(death) {
 			State = DEATH;
-			} else if (obstacle) {
+			} else if (data[0] == 'y' || data[1] == 'y') {
 			State = AVOID;
 			} else if (escape && fearLevel > 0 && energyLevel > DANGER) {
 			State = ESCAPE;
@@ -317,8 +406,7 @@ task main()
 			rSpeed = STOP;
 			break;
 		case AVOID:
-			lSpeed = avoidLSpeed;
-			rSpeed = avoidRSpeed;
+			obstacle();
 			break;
 		case ESCAPE:
 			lSpeed = escapeLSpeed;
