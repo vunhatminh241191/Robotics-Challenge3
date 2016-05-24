@@ -1,6 +1,8 @@
-#pragma config(Sensor, S1,     leftLight,           sensorCOLORFULL)
-#pragma config(Sensor, S2,     rightLight,           sensorCOLORFULL)
-#pragma config(Sensor, S3,     sonar,               sensorSONAR)
+#pragma config(Sensor, S1,     leftLight,      sensorLightActive)
+#pragma config(Sensor, S3,     rightLight,     sensorLightActive)
+#pragma config(Sensor, S2,     sonar,               sensorSONAR)
+#pragma config(Motor,  motorA,          leftMotor,     tmotorNXT, PIDControl, driveLeft, encoder)
+#pragma config(Motor,  motorB,          rightMotor,    tmotorNXT, PIDControl, driveRight, encoder)
 
 /*    MOTORS & SENSORS:                                                                                   *|
 |*    [I/O Port]              [Name]              [Type]              [Description]                       *|
@@ -9,12 +11,14 @@
 \*---------------------------------------------------------------------------------------------------4246-*/
 
 #define SAMPLES 50
-#define BASESPEED 30
-#define WHITE 20 //light sensor white reading value
+#define BASESPEED 25
+#define WHITE 60 //light sensor white reading value
 #define BLACK 7 //light sensor black reading value
 #define MAX_DIST 90 //maximum distance for the robot to read
 #define MIN_DIST 3 //minimum distance for the robot to read
 #define BREAKOUTANGLE 22 //if the robot reads this angle from the gyro, breakout from line
+
+int GREEN = 33; //The Green/Gray color of the line pattern carpet floor tiles
 
 int rSpeed, lSpeed = 0;
 int distance;
@@ -88,7 +92,8 @@ void turnAround(){
 	sleep(200);
 }
 
-int WhGreen = 33; //The color that keeps on the line of white and green
+int WhGreen = (WHITE + GREEN)/2 ; //46, The color that keeps on the line of white and green
+int BREAKOUT = 1000;
 
 /**
 * Once a white triangle line is detected, this method will get on and follow.
@@ -99,50 +104,73 @@ int WhGreen = 33; //The color that keeps on the line of white and green
 * param: bool left, did left sensor detect.
 */
 void followFood(bool left) {
-	bool inState = true; //flag for telling system we are following a line
-	bool foundFood = false;
-	int offset = 3;
-	//assuming left side triggered white if (left) {
-	//move straight forward until right gets on white
-	while(!(rightLumenance>=WHITE)){
-		lSpeed = BASESPEED;
-		rSpeed = BASESPEED;
-	}
-	bool online = true;
-	//keep right on the edge, while left is on white
-	while(online) {
-		clearTimer(T1);
-		while(rightLumenance>=WhGreen + offset){ //right moving too far left onto white
-			lSpeed = BASESPEED * 1.5;
-			rSpeed = BASESPEED;
-			if (time1[T1] > 200) { //we probably entered the big circle
-				foundFood = true;
-				online = false;
-			}
-		}
-		while(rightLumenance<=WhGreen - offset){ //right moving too far right onto green
-			lSpeed = BASESPEED;
-			rSpeed = BASESPEED * 1.5;
-		}
-		lSpeed = BASESPEED;
-		rSpeed = BASESPEED;
-		clearTimer(T1);
-		while (!leftLumenance >= WHITE) { //left light is off white, we are probably approaching the skinny end
-			if (time1[T1] > 200) {
-				turnAround(); //going to have to continue from this somehow
-											//how do we know we've turned around and stayed on the line?
-			}
-		}
-	}
-	eraseDisplay();
-	nxtDisplayTextLine(2, "Found Food: %d", foundFood);
-	lSpeed = 0;
-	rSpeed = 0;
-	while (true){
-		wait1Msec(1);
-	}
-}
+    //int runningSpeed = MOTOR_SPEED_NORMAL-5;
+    clearTimer(T3);
+    bool online = true;
+    bool foundFood = false;
+    int smallerTurnCount = 0;
+    int lastTurn = 0;
+    float offset = 3.0;
+    while (rightLumenance < WHITE) { //move until right gets on white
+    	lSpeed = BASESPEED; //will need a way to break out eventuallu
+    	rSpeed = BASESPEED;
+    }
+    // quickly align right before beginning
+    while (rightLumenance > WhGreen + offset) {
+    	lSpeed = BASESPEED * 2;
+      rSpeed = BASESPEED * 0.3;
+    }
 
+    while (online) {
+    	// -1 * ((.1 * sonarAvg - 10)*(.1 * sonarAvg - 10)) + 100;
+	  	displayCenteredBigTextLine(7, "current: %d", leftLumenance);
+				clearTimer(T1); //wrong way timer
+				clearTimer(T2); //on food patch timer
+        while (rightLumenance < WhGreen - offset) {	// off right, too much green
+        	lSpeed = BASESPEED * 0.3;
+          rSpeed = BASESPEED;
+          if (leftLumenance < WHITE) { //left is off white?
+          	if (time1(T2) > 200) { //went off the wrong way
+          		turnAround();
+          		online = false;
+          		break;
+          	}
+          }
+          else {
+          	clearTimer(T2);
+          }
+
+        }
+        clearTimer(T1);
+				clearTimer(T2);
+        while (rightLumenance > WhGreen + offset) {	// off left, too much white
+            lSpeed = BASESPEED;
+          	rSpeed = BASESPEED * 0.3;
+            if (leftLumenance < WHITE) { //left is off white?
+          		if (time1(T2) > 200) { //went off the wrong way
+          			turnAround();
+          			online = false;
+          			break;
+          		}
+          	}
+          	else {
+          		clearTimer(T2);
+          	}
+            if (time1(T1) > 1000){ //been on white a while, probably on food patch
+            	foundFood = true;
+      				online = false;
+      				break;
+      			}
+        }
+    }
+  	eraseDisplay();
+		nxtDisplayTextLine(2, "Found Food: %d", foundFood);
+		lSpeed = 0;
+		rSpeed = 0;
+		while (true){
+			wait1Msec(1);
+		}
+}
 
 /*
 
@@ -238,10 +266,9 @@ void RightState()
 **/
 task runMotorsTask()
 {
-	while(true)
-	{
-		motor[motorB] = lSpeed; //left motor
-		motor[motorC] = rSpeed; //right motor
+	while(true){
+		motor[leftMotor] = lSpeed;
+		motor[rightMotor] = rSpeed;
 	}
 }
 
@@ -291,6 +318,13 @@ task lightSensorTask()
 	}
 }
 
+task displayColors() {
+	while (true){
+		nxtDisplayTextLine(0, "Left = %d",leftLumenance);
+		nxtDisplayTextLine(1, "Right = %d",rightLumenance);
+	}
+}
+
 task main()
 {
 	srand(1023030); //seeds the random number generator
@@ -298,12 +332,17 @@ task main()
 	startTask(runMotorsTask);
 	startTask(invertMotorsTask);
 	startTask(lightSensorTask);
+	startTask(displayColors);
 	distance = SensorRaw[sonar]; //start with a reading
 	//resetGyro(gyro);
 	wait1Msec(1000);
 	while(true)
 	{
+
 		if (leftLumenance>=WHITE) {
+			stopTask(displayColors);
+			//playTone(81, 20);
+			stopTask(invertMotorsTask);
 			followFood(true);
 		}
 	}
