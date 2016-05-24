@@ -298,35 +298,16 @@ task main()
 {
 	srand(1023030); //seeds the random number generator
 	nVolume = 4; //nVolume is 0 to 4, this sets the max sound volume 4
-	StartTask(runMotorsTask);
-	StartTask(invertMotorsTask);
-	StartTask(lightSensorTask);
+	startTask(runMotorsTask);
+	startTask(invertMotorsTask);
+	startTask(lightSensorTask);
 	distance = SensorRaw[sonar]; //start with a reading
 	//resetGyro(gyro);
 	wait1Msec(1000);
 	while(true)
 	{
-		if(leftLumenance<=BLACK-5 && lineFound) //if left light sensor is on the black line
-		{
-			lSpeed=0;
-			rSpeed=0;
-			RightState(); //we want to go into this state
-			if(!objectFound) //checks to see if we are exiting the object finder task, since it has priority
-			{
-				lineFound = false;
-				wait1Msec(2000);
-			}
-		}
-		else if(rightLumenance<=BLACK-5 && lineFound) //if right light sensor is on the black line
-		{
-			lSpeed=0;
-			rSpeed=0;
-			LeftState(); //we want to go into this state
-			if(!objectFound)//checks to see if we are exiting the object finder task, since it has priority
-			{
-				lineFound = false;
-				wait1Msec(2000);
-			}
+		if (leftLumenance>=WHITE) {
+			followFood(true);
 		}
 	}
 }
