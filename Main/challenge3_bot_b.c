@@ -27,14 +27,18 @@
 #define STOP 0
 
 //flags
-bool death;
-//bool obstacle;
+bool content;
+bool hungry;
+bool starving;
+bool dead;
 bool escape;
+bool scared;
 bool feeding;
 int energyLevel;
 int fearLevel;
 bool objectFound = false; //flag for priority if object is found
 
+int State;
 
 //speeds
 int avoidLSpeed;
@@ -338,7 +342,6 @@ task getReadingTask()
 		}
 		if(cSuccess>=9) //indicates if we have a 90% success rate with distance
 			objectFound = true;
-		//showDisplay(distance, 0);
 	}
 }
 
@@ -346,7 +349,7 @@ task energyRate()
 {
 	while(true)
 	{
-		if(energyLevel<=0)
+		if(dead)
 			break;
 		else
 		{
@@ -355,7 +358,7 @@ task energyRate()
 				energyLevel++;
 				wait1Msec(1000);
 			}
-			while(!FEEDING && energyLevel>0)
+			while(!FEEDING && !dead)
 			{
 				energyLevel--;
 				wait1Msec(2000);
@@ -363,14 +366,90 @@ task energyRate()
 		}
 	}
 }
+
+task fearState()
+{
+	scared = false;
+	bool thirtyFlag = false;
+	while(!dead)
+	{
+		if(!scared && fearLevel<100)
+		{
+			fearLevel++;
+			wait1Msec(2400);
+		}
+		else if(State==ESCAPE && !scared)
+		{
+			scared = true;
+			clearTimer(T1);
+		}
+		else if(State==ESCAPE && scared)
+		{
+			thirtyFlag=false;
+			clearTimer(T1);
+			if(fearLevel<=25)
+				fearLevel=0;
+			else fearLevel-=25;
+		}
+		else if(scared)
+		{
+			if(time1[T1]>=30000 && !thirtyFlag)
+			{
+				clearTimer(T1);
+				thirtyFlag = true;
+			}
+			else if(thirtyFlag && time1[T1]>=30000)
+			{
+				thirtyFlag = false;
+				scared = false;
+			}
+		}
+	}
+}
+
+task energyState()
+{
+	while(1)
+	{
+		if(energyLevel>HUNGRY)
+		{
+			content = true;
+			hungry = false;
+			starving = false;
+			dead = false;
+		}
+		else if(energyLevel>DANGER && energyLevel<=HUNGRY)
+		{
+			content = false;
+			hungry = true;
+			starving = false;
+			dead = false;
+		}
+		else if(energyLevel<=DANGER && energyLevel>DEATH)
+		{
+			content = false;
+			hungry = false;
+			starving = true;
+			dead = false;
+		}
+		else
+		{
+			content = false;
+			hungry = false;
+			starving = false;
+			dead = true;
+		}
+	}
+}
 task main()
 {
 	startTask(runMotors);
+	startTask(fearState);
+	startTask(energyState);
 	startTask(getReadingTask);
 	startTask(invertMotorsTask);
 	startTask(energyRate);
 	startTask(commTask);
-	int State;
 
 	energyLevel = FULL;
 
@@ -387,11 +466,11 @@ task main()
 	distance = SensorValue[ultraSonic];
 	while(true)
 	{
-		if(death) {
+		if(dead) {
 			State = DEATH;
-			} else if (data[0] == 'y' || data[1] == 'y') {
+			} else if (data[0] == 'y' || data[1] == 'y') { //bumper
 			State = AVOID;
-			} else if (escape && fearLevel > 0 && energyLevel > DANGER) {
+			} else if (data[2] == 'y' && fearLevel > 0 && !starving) {
 			State = ESCAPE;
 			} else if (objectFound && energyLevel > DANGER) {
 			State = INVESTIGATE;
