@@ -470,7 +470,7 @@ task main()
 			State = DEATH;
 			} else if (data[2] == 'y' && fearLevel > 0 && !starving) {
 			State = ESCAPE;
-			} else if (objectFound && energyLevel > DANGER) {
+			} else {
 			State = WANDER;
 		}
 		switch(State) {
