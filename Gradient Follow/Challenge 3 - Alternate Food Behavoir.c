@@ -115,6 +115,7 @@ void followFood(bool left) {
     	lSpeed = BASESPEED; //will need a way to break out eventuallu
     	rSpeed = BASESPEED;
     }
+    doOver: //saving time here
     // quickly align right before beginning
     while (rightLumenance > WhGreen + offset) {
     	lSpeed = BASESPEED * 2;
@@ -149,7 +150,7 @@ void followFood(bool left) {
             if (leftLumenance < WHITE) { //left is off white?
           		if (time1(T2) > 200) { //went off the wrong way
           			turnAround();
-          			online = false;
+          			goto doOver;
           			break;
           		}
           	}
@@ -343,10 +344,12 @@ task main()
 			sleep(50);
 			if (leftLumenance>=WHITE) {
 				stopTask(displayColors); //leftLumanence calculations spiking up to over a thousand at random times
-				stopTask(invertMotorsTask);//every fewseconds, need to double check to throw this out.
+				stopTask(invertMotorsTask);//every few seconds, need to double check to throw this out.
 
 				//playTone(81, 20);
 				followFood(true);
+				startTask(displayColors);
+				startTask(invertMotorsTask);
 			}
 		}
 	}
