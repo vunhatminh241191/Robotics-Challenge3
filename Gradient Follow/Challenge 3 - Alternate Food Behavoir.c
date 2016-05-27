@@ -12,7 +12,7 @@
 
 #define SAMPLES 50
 #define BASESPEED 25
-#define WHITE 60 //light sensor white reading value
+#define WHITE 40 //corresponding to higher color sensors
 #define BLACK 7 //light sensor black reading value
 #define MAX_DIST 90 //maximum distance for the robot to read
 #define MIN_DIST 3 //minimum distance for the robot to read
@@ -89,7 +89,7 @@ void drunkTurn()
 void turnAround(){
 	lSpeed = 50;
 	rSpeed = -50;
-	sleep(200);
+	sleep(1000);
 }
 
 int WhGreen = (WHITE + GREEN)/2 ; //46, The color that keeps on the line of white and green
@@ -340,10 +340,14 @@ task main()
 	{
 
 		if (leftLumenance>=WHITE) {
-			stopTask(displayColors);
-			//playTone(81, 20);
-			stopTask(invertMotorsTask);
-			followFood(true);
+			sleep(50);
+			if (leftLumenance>=WHITE) {
+				stopTask(displayColors); //leftLumanence calculations spiking up to over a thousand at random times
+				stopTask(invertMotorsTask);//every fewseconds, need to double check to throw this out.
+
+				//playTone(81, 20);
+				followFood(true);
+			}
 		}
 	}
 }
