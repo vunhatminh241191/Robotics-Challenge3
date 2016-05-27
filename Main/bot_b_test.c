@@ -19,11 +19,10 @@
 #define ESCAPE 2
 #define INVESTIGATE 3
 #define FEEDING 4
-#define HUNTING 5
-#define WANDER 6
+#define WANDER 5
 #define FULL 120
 #define HUNGRY 60
-#define STARVING 30
+#define DANGER 30
 #define DEAD 0
 #define STOP 0
 
@@ -31,16 +30,23 @@
 bool content;
 bool hungry;
 bool starving;
-bool dead = false;
+bool dead;
 bool scared;
+bool bump;
 bool feeding;
-bool hunting;
+bool gradient;
+bool escape;
 int energyLevel;
 int fearLevel;
 bool objectFound = false; //flag for priority if object is found
+bool lightFlash = false; //flag for when light flashes top sensor
+int counter;
 
 int State;
+
+//speeds
 int lSpeed, rSpeed = 0;
+
 int distance;
 ubyte data[3];
 
@@ -87,7 +93,7 @@ bool lostTarget() //this function will
 		if(distance <= MAX_DIST) //if object within range set flag to true
 			return true;
 	}
-	playTone(10000, 10);
+	//playTone(10000, 10);
 	return false; //we lost the target
 }
 
@@ -126,11 +132,38 @@ void targetAquired()
 			speed = sonicSpeed(distance); //if object is found, find its proportional speed
 			rSpeed = speed; //set that speed to motors
 			lSpeed = speed;
-			playTone(speed*50, 5); //debugging
+			//playTone(speed*50, 5); //debugging
 		}
 	}
 }
 
+void backUp()
+{
+	rSpeed = -1*BASESPEED;
+	lSpeed = -1*BASESPEED;
+	wait1Msec(500);
+	lSpeed = 0;
+	rSpeed = 0;
+}
+
+void randomTurning()
+{
+	int randTemp = (random[6]+2)*250;
+	if(random[2])
+	{
+		rSpeed = BASESPEED;
+		lSpeed = -1*(BASESPEED-10);
+		wait1Msec(randTemp);
+	}
+	else
+	{
+		rSpeed = -1*(BASESPEED-10);
+		lSpeed = BASESPEED;
+		wait1Msec(randTemp);
+	}
+	lSpeed = 0;
+	rSpeed = 0;
+}
 /*
 *Function to make the robot do a drunk-sailor walk
 *Parameters: none
@@ -185,25 +218,9 @@ void drunkTurn()
 void bothD()
 {
 	playTone(2400, 100);
-	rSpeed = -1*BASESPEED;
-	lSpeed = -1*BASESPEED;
-	wait1Msec(500);
-	lSpeed = 0;
-	rSpeed = 0;
+	backUp();
 	wait1Msec(2000);
-	int randTemp = (random[6]+2)*250;
-	if(random[2])
-	{
-		rSpeed = BASESPEED;
-		lSpeed = -1*(BASESPEED-25);
-		wait1Msec(randTemp);
-	}
-	else
-	{
-		rSpeed = -1*(BASESPEED-25);
-		lSpeed = BASESPEED;
-		wait1Msec(randTemp);
-	}
+	randomTurning();
 }
 
 //When a left bumb is detected wait 100ms.
@@ -224,9 +241,7 @@ void leftD()
 		lSpeed = 0;
 		rSpeed = 0;
 		wait1Msec(50);
-		rSpeed = -1*BASESPEED; //back up half a second
-		lSpeed = -1*BASESPEED;
-		wait1Msec(500);
+		backUp();
 		rSpeed = BASESPEED; //turn left
 		lSpeed = -1*BASESPEED;
 		wait1Msec((random[4]+3)*100); //500
@@ -251,9 +266,7 @@ void rightD()
 		lSpeed = 0;
 		rSpeed = 0;
 		wait1Msec(50);
-		lSpeed = -1*BASESPEED;
-		rSpeed = -1*BASESPEED;
-		wait1Msec(500);
+		backUp();
 		rSpeed = -1*BASESPEED;
 		lSpeed = BASESPEED;
 		wait1Msec((random[4]+3)*100); //500
@@ -268,6 +281,23 @@ void obstacle()
 		rightD();
 }
 
+void runAway()
+{
+	backUp();
+	randomTurning();
+	while(bump){}
+	for(int i = 0; i<fearLevel; i++)
+	{
+		while(bump){}
+		rSpeed = BASESPEED+(fearLevel/4);
+		lSpeed = BASESPEED+(fearLevel/4);
+		wait1Msec(40);
+	}
+	rSpeed = 0;
+	lSpeed = 0;
+	escape = false;
+}
+
 task commTask()
 {
 	nxtEnableHSPort();
@@ -279,6 +309,12 @@ task commTask()
 		{
 			nxtReadRawHS(&data[0], 3*sizeof(ubyte));
 		}
+		if(data[2]=='y') {
+			lightFlash = true;
+			escape = true;
+		}
+		if(data[0]=='y' || data[1]=='y')
+			bump = true;
 	}
 }
 /**
@@ -288,7 +324,7 @@ task invertMotorsTask()
 {
 	while(true)
 	{
-		while(!objectFound)
+		while(State==WANDER)
 		{
 			wait1Msec((random[6]+3)*250); //wait 1 to 3 seconds (250mS resolution)
 			drunkTurn();
@@ -353,42 +389,45 @@ task energyRate()
 	}
 }
 
+void fearCounter()
+{
+	lightFlash = false;
+	counter = 0;
+	while(counter<60 && !lightFlash)
+	{
+		counter++;
+		wait1Msec(1000);
+	}
+}
+
 task fearState()
 {
+	fearLevel = 100;
 	scared = false;
-	bool thirtyFlag = false;
-	while(!dead)
+	while(true)
 	{
-		if(!scared && fearLevel<100)
+		if(counter>=60)
+		{
+			scared = false;
+		}
+		while(fearLevel < 100 && !scared && !lightFlash)
 		{
 			fearLevel++;
 			wait1Msec(2400);
 		}
-		else if(State==ESCAPE && !scared)
+		if(lightFlash)
 		{
-			scared = true;
-			clearTimer(T1);
-		}
-		else if(State==ESCAPE && scared)
-		{
-			thirtyFlag=false;
-			clearTimer(T1);
-			if(fearLevel<=25)
-				fearLevel=0;
-			else fearLevel-=25;
-		}
-		else if(scared)
-		{
-			if(time1[T1]>=30000 && !thirtyFlag)
+			fearCounter();
+			if(scared)
 			{
-				clearTimer(T1);
-				thirtyFlag = true;
+				if(fearLevel<=25)
+					fearLevel = 0;
+				else
+					fearLevel -= 25;
 			}
-			else if(thirtyFlag && time1[T1]>=30000)
-			{
-				thirtyFlag = false;
-				scared = false;
-			}
+			if(!scared)
+				scared = true;
+			runAway();
 		}
 	}
 }
@@ -404,14 +443,14 @@ task energyState()
 			starving = false;
 			dead = false;
 		}
-		else if(energyLevel>STARVING && energyLevel<=HUNGRY)
+		else if(energyLevel>DANGER && energyLevel<=HUNGRY)
 		{
 			content = false;
 			hungry = true;
 			starving = false;
 			dead = false;
 		}
-		else if(energyLevel<=STARVING && energyLevel>DEATH)
+		else if(energyLevel<=DANGER && energyLevel>DEATH)
 		{
 			content = false;
 			hungry = false;
@@ -427,63 +466,73 @@ task energyState()
 		}
 	}
 }
-
+task displayValues()
+{
+	while(1)
+	{
+		eraseDisplay();
+		displayCenteredBigTextLine(1, "F=%d", fearLevel);
+		if(scared)
+			displayCenteredBigTextLine(3, "Scared");
+		else
+			displayCenteredBigTextLine(3, "!Scared");
+		displayCenteredBigTextLine(5, "%d", counter);
+		wait1Msec(100);
+	}
+}
 task main()
 {
 	startTask(runMotors);
 	startTask(fearState);
 	startTask(energyState);
-	startTask(getReadingTask);
+	//startTask(getReadingTask);
 	startTask(invertMotorsTask);
 	startTask(energyRate);
 	startTask(commTask);
+	startTask(displayValues);
+
+	/*
+	bool scared;
+	bool bump;
+	bool feeding;
+	bool escape;
+	bool objectFound;
+	bool gradient;
+	*/
 
 	energyLevel = FULL;
-	fearLevel = 100;
 	distance = SensorValue[ultraSonic];
-
 	while(true)
 	{
-		eraseDisplay();
-		displayCenteredBigTextLine(1, "F=%d", fearLevel);
-		displayCenteredBigTextLine(3, "E=%d", energyLevel);
-		displayCenteredBigTextLine(5, "%d", State);
-		if(dead) { //if we are dead
+		if(dead) {
 			State = DEATH;
-			} else if (data[0] == 'y' || data[1] == 'y') { //bumper
+			}	else if (bump) { //bumper
 			State = AVOID;
-			} else if (data[2] == 'y' && fearLevel > 0 && !starving) { //fear light
+			} else if (escape && fearLevel > 0 && !starving) {
 			State = ESCAPE;
-			} else if (objectFound && !starving) { //found an object
-			State = INVESTIGATE;
-			} else if (feeding) { //found food
-			State = FEEDING;
-			} else if (hunting) { //found a scent
-			State = HUNTING;
 			} else {
-			State = WANDER; //otherwise just wander around
+			State = WANDER;
 		}
 		switch(State) {
-		case DEATH: //are we dead?
-			lSpeed = STOP;
-			rSpeed = STOP;
+		case DEATH:
+			scared = false;
+			bump = false;
+			feeding = false;
+			escape = false;
+			objectFound = false;
+			gradient = false;
 			break;
 		case AVOID: //did we hit a bumper?
-			obstacle();
+			feeding = false;
+			objectFound = false;
+			gradient = false;
 			break;
-		case ESCAPE: //are we afraid of light?
-			lSpeed = 0; //0 is placeholder
-			rSpeed = 0;//0 is placeholder
+		case ESCAPE:
+			feeding = false;
+			objectFound = false;
+			gradient = false;
 			break;
-		case INVESTIGATE: //did we find an object?
-			targetAquired();
-			break;
-		case FEEDING: //are we eating?
-			//eatingfunction
-			lSpeed = 0;//0 is placeholder
-			rSpeed = 0;//0 is placeholder
-			break;
-		case WANDER: //nothing is happening
+		case WANDER:
 			break;
 		}
 	}
