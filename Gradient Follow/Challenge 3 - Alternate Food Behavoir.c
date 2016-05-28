@@ -17,6 +17,7 @@
 #define MAX_DIST 90 //maximum distance for the robot to read
 #define MIN_DIST 3 //minimum distance for the robot to read
 #define BREAKOUTANGLE 22 //if the robot reads this angle from the gyro, breakout from line
+#define FULL 120
 
 int GREEN = 33; //The Green/Gray color of the line pattern carpet floor tiles
 
@@ -25,6 +26,11 @@ int distance;
 bool lineFound = false; //flag for priority if line is found
 int leftLumenance, rightLumenance; //reading values for light sensors
 bool objectFound = false; //flag for priority if object is found
+bool looking = true;
+bool feeding = false;
+bool dead = false;
+int energyLevel;
+int WhGreen = (WHITE + GREEN)/2 ; //46, The color that keeps on the line of white and green
 
 /*
 *Function used to show the user what values are being given
@@ -36,6 +42,28 @@ void showDisplay(int x, int y)
 	eraseDisplay(); //reset display
 	nxtDisplayTextLine(0, "Gyro = %d", x); //what are you trying to do with this?
 	nxtDisplayTextLine(1, "%d", y);
+}
+
+task energyRate()
+{
+	while(true)
+	{
+		if(dead)
+			break;
+		else
+		{
+			while(FEEDING && energyLevel<=FULL)
+			{
+				energyLevel++;
+				wait1Msec(1000);
+			}
+			while(!FEEDING && !dead)
+			{
+				energyLevel--;
+				wait1Msec(2000);
+			}
+		}
+	}
 }
 
 /*
@@ -86,14 +114,62 @@ void drunkTurn()
 	rSpeed = BASESPEED;
 }
 
+/**
+*Task that runs continuously and calls drunkTurn function every few seconds.
+**/
+task invertMotorsTask()
+{
+	while(true)
+	{
+		while(!lineFound && !objectFound)
+		{
+			wait1Msec((random[6]+3)*250); //wait 1 to 3 seconds (250mS resolution)
+			drunkTurn();
+		}
+	}
+}
+
+/**
+*Rotates right until it gets back on the triangle
+*/
 void turnAround(){
+	while (!(leftLumenance >= WHITE)){
+		lSpeed = 50;
+		rSpeed = -50;
+	}
+}
+
+/**
+*Rotates right about 180*
+*/
+void oneEighty(){
 	lSpeed = 50;
 	rSpeed = -50;
 	sleep(1000);
 }
 
-int WhGreen = (WHITE + GREEN)/2 ; //46, The color that keeps on the line of white and green
-int BREAKOUT = 1000;
+/**robot moves around the patch,
+* staying on the patch until full or task ends
+*/
+void feed(){
+	startTask(invertMotorsTask);
+	while (energyLevel < FULL) {
+		nxtDisplayTextLine(0, "Food: %d", energyLevel);
+		if (leftLumenance <= WhGreen || rightLumenance <= WhGreen) {
+			stopTask(invertMotorsTask);
+			oneEighty();
+			lSpeed = BASESPEED;
+			rSpeed = BASESPEED;
+			sleep(400); //go forward a bit
+			startTask(invertMotorsTask);
+		}
+	}
+	playTone(10000, 10);
+	feeding = false;
+	looking = true;
+}
+
+int BREAKOUT = 1200;
 
 /**
 * Once a white triangle line is detected, this method will get on and follow.
@@ -116,8 +192,9 @@ void followFood(bool left) {
     	rSpeed = BASESPEED;
     }
     doOver: //saving time here
+
     // quickly align right before beginning
-    while (rightLumenance > WhGreen + offset) {
+    while (rightLumenance > WhGreen - offset) {
     	lSpeed = BASESPEED * 2;
       rSpeed = BASESPEED * 0.3;
     }
@@ -133,8 +210,9 @@ void followFood(bool left) {
           if (leftLumenance < WHITE) { //left is off white?
           	if (time1(T2) > 200) { //went off the wrong way
           		turnAround();
-          		online = false;
-          		break;
+          		goto doOver;
+          		//online = false; TODO: Are we stuck in a loop?
+          		//break;
           	}
           }
           else {
@@ -151,13 +229,13 @@ void followFood(bool left) {
           		if (time1(T2) > 200) { //went off the wrong way
           			turnAround();
           			goto doOver;
-          			break;
+          			//break;
           		}
           	}
           	else {
           		clearTimer(T2);
           	}
-            if (time1(T1) > 1000){ //been on white a while, probably on food patch
+            if (time1(T1) > 800){ //been on white a while, probably on food patch
             	foundFood = true;
       				online = false;
       				break;
@@ -166,101 +244,22 @@ void followFood(bool left) {
     }
   	eraseDisplay();
 		nxtDisplayTextLine(2, "Found Food: %d", foundFood);
-		lSpeed = 0;
-		rSpeed = 0;
-		while (true){
-			wait1Msec(1);
-		}
-}
-
-/*
-
-void LeftState()
-{
-	bool inState = true; //flag for telling system we are following a line
-	bool firstTurn = false; //flag to check and see if the robot has turned once
-	while(inState && !objectFound) //while we are following a line and no object is found
-	{
-		wait1Msec(100);
-		resetGyro(gyro);
-		while(leftLumenance<=BLACK && inState && !objectFound) //left is black
-		{
-			rSpeed = BASESPEED; //turn left
-			lSpeed = -1*BASESPEED;
-		}
-		//Might need inState check here
-		resetGyro(gyro);
-		while(rightLumenance>=WHITE && inState && !objectFound) //right is white
-		{
-			lSpeed = BASESPEED; //turn right
-			rSpeed = -1*BASESPEED;
-			//if angle on turn is greater or less than max breakout angle
-			if(getGyroHeading(gyro)>BREAKOUTANGLE ||-1*BREAKOUTANGLE>getGyroHeading(gyro))
-			{
-				if(firstTurn)
-				{
-					inState = false; //end of line
-				}
-				else
-				{
-					firstTurn = true; //we had a first big turn
-					resetGyro(gyro);
-				}
-			}
-		}
-		//drive forward
-		lSpeed = BASESPEED;
-		rSpeed = BASESPEED;
-	}
-	playTone(1000, 50);
-	//drive away from line
-	rSpeed = BASESPEED+10;
-	lSpeed = BASESPEED+10;
-}
-
-
-void RightState()
-{
-	bool inState = true; //we found a line
-	bool firstTurn = false;
-	while(inState && !objectFound) //still in the line and no object found
-	{
-		wait1Msec(100);
-		resetGyro(gyro);
-		while(rightLumenance<=BLACK && inState && !objectFound) //while right is on black
-		{
+		if (foundFood) { //rotate left about 90 degrees to face the circle hopefully
+			lSpeed = -50;
+			rSpeed = 50;
+			sleep(300);
+			playTone(1000, 10);
 			lSpeed = BASESPEED;
-			rSpeed = -1*BASESPEED;
-		}
-		resetGyro(gyro);
-		while(leftLumenance>=WHITE && inState && !objectFound) //while left is on white
-		{
 			rSpeed = BASESPEED;
-			lSpeed = -1*BASESPEED;
-			//if the angle of the gyro reading is less than or greater than the breakout angle
-			if(getGyroHeading(gyro)>BREAKOUTANGLE || -1*BREAKOUTANGLE>getGyroHeading(gyro) )
-			{
-				if(firstTurn)
-				{
-					inState = false; //end of line
-				}
-				else
-				{
-					firstTurn = true; //we had a first big turn
-					resetGyro(gyro);
-				}
-			}
+			sleep(400); //go forward a bit
+			feeding = true;
+			feed();
 		}
-		//drive forward
-		lSpeed = BASESPEED;
-		rSpeed = BASESPEED;
-	}
-	PlayTone(1000, 100);
-	//drive away from line
-	rSpeed = BASESPEED+10;
-	lSpeed = BASESPEED+10;
+		else {
+			looking = true;
+		}
+
 }
-*/
 
 /**
 *Task that continually sets the motor speed.
@@ -273,20 +272,7 @@ task runMotorsTask()
 	}
 }
 
-/**
-*Task that runs continuously and calls drunkTurn function every few seconds.
-**/
-task invertMotorsTask()
-{
-	while(true)
-	{
-		while(!lineFound && !objectFound)
-		{
-			wait1Msec((random[6]+3)*250); //wait 1 to 3 seconds (250mS resolution)
-			drunkTurn();
-		}
-	}
-}
+
 
 /**
 *Task that continually samples the light sensors to find when
@@ -330,26 +316,26 @@ task main()
 {
 	srand(1023030); //seeds the random number generator
 	nVolume = 4; //nVolume is 0 to 4, this sets the max sound volume 4
+	energyLevel = FULL / 2; //begin hungry for test
 	startTask(runMotorsTask);
 	startTask(invertMotorsTask);
 	startTask(lightSensorTask);
 	startTask(displayColors);
+	startTask(energyRate);
 	distance = SensorRaw[sonar]; //start with a reading
 	//resetGyro(gyro);
 	wait1Msec(1000);
 	while(true)
 	{
 
-		if (leftLumenance>=WHITE) {
+		if (leftLumenance>=WHITE && looking && energyLevel < 90) {
 			sleep(50);
 			if (leftLumenance>=WHITE) {
+				looking = false; //be sure to set looking back to true if followFood tasks are interrupted
 				stopTask(displayColors); //leftLumanence calculations spiking up to over a thousand at random times
 				stopTask(invertMotorsTask);//every few seconds, need to double check to throw this out.
 
-				//playTone(81, 20);
 				followFood(true);
-				startTask(displayColors);
-				startTask(invertMotorsTask);
 			}
 		}
 	}
