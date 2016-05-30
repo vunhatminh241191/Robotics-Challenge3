@@ -10,6 +10,8 @@
 |*    Port B                  motorB              NXT                 Left motor                          *|
 \*---------------------------------------------------------------------------------------------------4246-*/
 
+task watchForGradient();
+
 #define SAMPLES 50
 #define BASESPEED 25
 #define WHITE 40 //corresponding to higher color sensors
@@ -205,7 +207,6 @@ task feed(){
 		if (leftLumenance < WHITE || rightLumenance < WHITE) {
 			stopTask(feedingInvertMotorsTask);
 			oneEighty();
-			playTone(1000, 5);
 			lSpeed = HALFSPEED;
 			rSpeed = HALFSPEED;
 			sleep(50); //go forward a bit
@@ -216,6 +217,7 @@ task feed(){
 	feeding = false;
 	looking = true;
 	stopTask(feedingInvertMotorsTask);
+	startTask(watchForGradient);
 	startTask(invertMotorsTask); //finished with gradient following, start this task and return to normal
 }
 
@@ -235,6 +237,7 @@ task followFoodLeft() {
     bool foundFood = false;
     bool doOver = true;
     float offset = 3.0;
+    int wrongWayCount = 0;
     while (rightLumenance < WHITE) { //move until right gets on white
     	lSpeed = BASESPEED; //will need a way to break out eventuallu
     	rSpeed = BASESPEED;
@@ -258,7 +261,8 @@ task followFoodLeft() {
           if (leftLumenance < WHITE) { //left is off white?
          		if (time1(T2) > 200) { //went off the wrong way
          			turnAroundLeft();
-         			online = false; //TODO: Are we stuck in a loop?
+         			online = false;
+         			wrongWayCount++;
          			break;
          		}
          	}
@@ -278,7 +282,8 @@ task followFoodLeft() {
           if (leftLumenance < WHITE) { //left is off white?
         		if (time1(T2) > 200) { //went off the wrong way
           		turnAroundLeft();
-          		online = false; // are we in a loop?
+          		online = false;
+          		wrongWayCount++;
           		break;
          		}
          	}
@@ -292,6 +297,10 @@ task followFoodLeft() {
       			break;
      			}
        	}
+   		}
+   		if (wrongWayCount >= 2) {
+   			doOver = false; //something has gone wrong, exit
+   			break;
    		}
  		}
   	eraseDisplay();
@@ -310,6 +319,7 @@ task followFoodLeft() {
 		else {
 			looking = true;
 			startTask(invertMotorsTask);
+			startTask(watchForGradient);
 		}
 
 }
@@ -320,9 +330,18 @@ task followFoodRight() {
     bool foundFood = false;
     bool doOver = true;
     float offset = 3.0;
-    while (leftLumenance < WHITE) { //move until left gets on white
-    	lSpeed = BASESPEED; //will need a way to break out eventuallu
+    int wrongWayCount = 0;
+    bool check = true;
+    while (check) { //move until left gets on white
+    	lSpeed = BASESPEED; //TODO: will need a way to break out eventualluy
     	rSpeed = BASESPEED;
+    	if (leftLumenance >= WHITE) { //check that leftLumenance spike
+    		sleep(20);
+    		if (leftLumenance >= WHITE) {
+    			check = false;
+    		}
+    	}
+
     }
     while (doOver) {
 			online = true;
@@ -343,7 +362,8 @@ task followFoodRight() {
           if (rightLumenance < WHITE) { //right is off white?
          		if (time1(T2) > 200) { //went off the wrong way
          			turnAroundRight();
-         			online = false; //TODO: Are we stuck in a loop?
+         			online = false;
+         			wrongWayCount++;
          			break;
          		}
          	}
@@ -360,10 +380,11 @@ task followFoodRight() {
        	while (leftLumenance > WhGreen + offset) {	// off right, too much white
         	lSpeed = BASESPEED * 0.3;
          	rSpeed = BASESPEED;
-          if (rightLumenance < WHITE) { //left is off white?
+          if (rightLumenance < WHITE) { //right is off white?
         		if (time1(T2) > 200) { //went off the wrong way
           		turnAroundRight();
-          		online = false; // are we in a loop?
+          		online = false;
+          		wrongWayCount++;
           		break;
          		}
          	}
@@ -377,6 +398,10 @@ task followFoodRight() {
       			break;
      			}
        	}
+   		}
+   		if (wrongWayCount >= 2) {
+   			doOver = false;
+   			break;
    		}
  		}
   	eraseDisplay();
@@ -395,6 +420,7 @@ task followFoodRight() {
 		else {
 			looking = true;
 			startTask(invertMotorsTask);
+			startTask(watchForGradient);
 		}
 
 }
@@ -482,28 +508,12 @@ task main()
 	startTask(lightSensorTask);
 	startTask(displayColors);
 	startTask(energyRate);
+	startTask(watchForGradient);
 	distance = SensorRaw[sonar]; //start with a reading
 	//resetGyro(gyro);
 	wait1Msec(1000);
 	while(true)
 	{
-
-		if (leftLumenance>=WHITE && looking && energyLevel < 90) {
-			sleep(50);
-			if (leftLumenance>=WHITE) {
-				looking = false; //be sure to set looking back to true if followFood tasks are interrupted
-				stopTask(displayColors); /*leftLumanence calculations spiking up to over a thousand at random times
-				every few seconds, need to double check to throw it out.*/
-				startTask(followFoodLeft);
-			}
-		}
-		if (rightLumenance>=WHITE && looking && energyLevel < 90) {
-			sleep(50);
-			if (rightLumenance>=WHITE) {
-				looking = false; //be sure to set looking back to true if followFood tasks are interrupted
-				stopTask(displayColors); /*rightLumenance didn't look like it was spiking but I'm double checking anyway*/
-				startTask(followFoodRight);
-			}
-		}
+		sleep(10);
 	}
 }
