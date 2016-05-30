@@ -12,6 +12,7 @@
 #define BASESPEED 20
 #define WHITE 20 //light sensor white reading value
 #define BLACK 7 //light sensor black reading value
+#define GREEN 33 //The Green/Gray color of the line pattern carpet floor tiles
 #define MAX_DIST 90 //maximum distance for the robot to read
 #define MIN_DIST 3 //minimum distance for the robot to read
 #define DEATH 0
@@ -26,23 +27,80 @@
 #define STARVING 30
 #define DEAD 0
 #define STOP 0
+#define HALFSPEED BASESPEED/2
+#define BREAKOUT 1200
 
 //flags
 bool content;
 bool hungry;
 bool starving;
-bool dead = false;
+bool dead;
 bool scared;
+bool bump;
 bool feeding;
-bool hunting;
+bool looking;
+bool escape;
+bool objectFound = false; //flag for priority if object is found
+bool lightFlash = false; //flag for when light flashes top sensor
+
+int WhGreen = (WHITE + GREEN)/2 ; //46, The color that keeps on the line of white and green
 int energyLevel;
 int fearLevel;
-bool objectFound = false; //flag for priority if object is found
-
+int counter;
+int leftLumenance, rightLumenance; //reading values for light sensors
 int State;
-int lSpeed, rSpeed = 0;
 int distance;
+
+//speeds
+int lSpeed, rSpeed = 0;
+
 ubyte data[3];
+
+void backUp()
+{
+	rSpeed = -1*BASESPEED;
+	lSpeed = -1*BASESPEED;
+	wait1Msec(500);
+	lSpeed = 0;
+	rSpeed = 0;
+}
+
+
+void randomTurning()
+{
+	int randTemp = (random[6]+2)*250;
+	if(random[2])
+	{
+		rSpeed = BASESPEED;
+		lSpeed = -1*(BASESPEED-10);
+		wait1Msec(randTemp);
+	}
+	else
+	{
+		rSpeed = -1*(BASESPEED-10);
+		lSpeed = BASESPEED;
+		wait1Msec(randTemp);
+	}
+	lSpeed = 0;
+	rSpeed = 0;
+}
+
+void runAway()
+{
+	backUp();
+	randomTurning();
+	while(bump){}
+	for(int i = 0; i<fearLevel; i++)
+	{
+		while(bump){}
+		rSpeed = BASESPEED+(fearLevel/4);
+		lSpeed = BASESPEED+(fearLevel/4);
+		wait1Msec(40);
+	}
+	rSpeed = 0;
+	lSpeed = 0;
+	escape = false;
+}
 
 /**
 *This function finds the speed proportional to the distance
@@ -96,37 +154,38 @@ bool lostTarget() //this function will
 *Parameters: none
 *returns: void
 **/
-void targetAquired()
+task targetAquired()
 {
-	int speed = 0;
 	while(true)
 	{
-		if(distance>MAX_DIST)
+		int speed = 0;
+		while(objectFound && !starving)
 		{
-			if(!lostTarget()) //if we lose the target, check for it
+			if(distance>MAX_DIST)
 			{
-				break; //we lost the target, break out
+				if(!lostTarget()) //if we lose the target, check for it
+				{
+					objectFound = false;
+					break;
+				}
 			}
-		}
-		else if(distance<=MIN_DIST)
-		{
-			rSpeed = 0; //stop motors
-			lSpeed = 0;
-			wait1Msec(5000); //wait 5 seconds
-			rSpeed=-50; //reverse motors
-			lSpeed=-50;
-			wait1Msec(1000); //reverse motors for 1 second
-			rSpeed=50; //turn left
-			lSpeed=0;
-			wait1Msec(1000); //turn left for 1 second
-			lSpeed=50;//drive forward
-			break;
-		} else
-		{
-			speed = sonicSpeed(distance); //if object is found, find its proportional speed
-			rSpeed = speed; //set that speed to motors
-			lSpeed = speed;
-			playTone(speed*50, 5); //debugging
+			else if(distance<=MIN_DIST)
+			{
+				rSpeed = 0; //stop motors
+				lSpeed = 0;
+				for(int x = 0; x < 60; x++)
+				{
+					wait1Msec(50); //wait 3 seconds
+				}
+				backUp();
+				randomTurning();
+				objectFound = false;
+			} else
+			{
+				speed = sonicSpeed(distance); //if object is found, find its proportional speed
+				rSpeed = speed; //set that speed to motors
+				lSpeed = speed;
+			}
 		}
 	}
 }
@@ -138,31 +197,34 @@ void targetAquired()
 */
 void drunkTurn()
 {
-	if(objectFound)
-	{
-		return; //we want to break out if an object is found
-	}
 	//get direction and duration
 	int Dir = random[2];
 	//time is for turning duration, time2 is for the forward duration.
-	int turnDuration = (random[5]+1) * 350;
-	int forwardDuration = (random[3]+1) * 100;
+	int turnDuration = (random[5]+1) * 3;
+	int forwardDuration = (random[3]+1);
 
-	//initial turn off-course
-	if(Dir==1) {
-		rSpeed = BASESPEED+15;
-		lSpeed = BASESPEED;
-	} else
+	for(int j = 0; j < turnDuration; j++)
+	{
+		if(Dir) {
+			rSpeed = BASESPEED+15;
+			lSpeed = BASESPEED;
+		} else
+		{
+			lSpeed = BASESPEED;
+			rSpeed = BASESPEED+15;
+		}
+		wait1Msec(100);
+		if(State!=WANDER)
+			break;
+	}
+	for(int k = 0; k < forwardDuration; k++)
 	{
 		lSpeed = BASESPEED;
-		rSpeed = BASESPEED+15;
+		rSpeed = BASESPEED;
+		wait1Msec(100);
+		if(State!=WANDER)
+			break;
 	}
-
-	//move straight
-	wait1Msec(turnDuration);
-	lSpeed = BASESPEED;
-	rSpeed = BASESPEED;
-	wait1Msec(forwardDuration);
 
 	//Turn back to the forward position
 	if(Dir==1) {
@@ -185,25 +247,9 @@ void drunkTurn()
 void bothD()
 {
 	playTone(2400, 100);
-	rSpeed = -1*BASESPEED;
-	lSpeed = -1*BASESPEED;
-	wait1Msec(500);
-	lSpeed = 0;
-	rSpeed = 0;
+	backUp();
 	wait1Msec(2000);
-	int randTemp = (random[6]+2)*250;
-	if(random[2])
-	{
-		rSpeed = BASESPEED;
-		lSpeed = -1*(BASESPEED-25);
-		wait1Msec(randTemp);
-	}
-	else
-	{
-		rSpeed = -1*(BASESPEED-25);
-		lSpeed = BASESPEED;
-		wait1Msec(randTemp);
-	}
+	randomTurning();
 }
 
 //When a left bumb is detected wait 100ms.
@@ -224,9 +270,7 @@ void leftD()
 		lSpeed = 0;
 		rSpeed = 0;
 		wait1Msec(50);
-		rSpeed = -1*BASESPEED; //back up half a second
-		lSpeed = -1*BASESPEED;
-		wait1Msec(500);
+		backUp();
 		rSpeed = BASESPEED; //turn left
 		lSpeed = -1*BASESPEED;
 		wait1Msec((random[4]+3)*100); //500
@@ -251,9 +295,7 @@ void rightD()
 		lSpeed = 0;
 		rSpeed = 0;
 		wait1Msec(50);
-		lSpeed = -1*BASESPEED;
-		rSpeed = -1*BASESPEED;
-		wait1Msec(500);
+		backUp();
 		rSpeed = -1*BASESPEED;
 		lSpeed = BASESPEED;
 		wait1Msec((random[4]+3)*100); //500
@@ -279,8 +321,15 @@ task commTask()
 		{
 			nxtReadRawHS(&data[0], 3*sizeof(ubyte));
 		}
+		if(data[2]=='y') {
+			lightFlash = true;
+			escape = true;
+		}
+		if(data[0]=='y' || data[1]=='y')
+			bump = true;
 	}
 }
+
 /**
 *Task that runs continuously and calls drunkTurn function every few seconds.
 **/
@@ -288,10 +337,336 @@ task invertMotorsTask()
 {
 	while(true)
 	{
-		while(!objectFound)
+		if(State==WANDER)
 		{
 			wait1Msec((random[6]+3)*250); //wait 1 to 3 seconds (250mS resolution)
-			drunkTurn();
+			if(State==WANDER)
+				drunkTurn();
+		}
+	}
+}
+
+/**
+*Rotates right until it gets back on the triangle
+*/
+void turnAroundLeft(){
+	while (!(leftLumenance >= WHITE)){
+		lSpeed = 50;
+		rSpeed = -50;
+	}
+}
+
+/**
+*Rotates left until it gets back on the triangle
+*/
+void turnAroundRight(){
+	while (!(rightLumenance >= WHITE)){
+		lSpeed = -50;
+		rSpeed = 50;
+	}
+}
+
+/**
+*Rotates right about 180*
+*Might only turn about 30*, turning is highely random
+*then keeps turning until both are on white
+*/
+void oneEighty(){
+	lSpeed = 50;
+	rSpeed = -50;
+	sleep(1000);
+	while(leftLumenance < WHITE || rightLumenance < WHITE) {
+		lSpeed = 50;
+		rSpeed = -50;
+	}
+}
+
+/**
+*Called during feeding, like invertMotorsTask but sways much more
+*Moved the drunkTurn method into here, cannot cancel it like a task,
+*which is needed when going off the patch
+**/
+task feedingInvertMotorsTask()
+{
+	while(true)
+	{
+		int Dir = random[2];
+		//time is for turning duration, time2 is for the forward duration.
+		int turnDuration = (random[5]+1) * 350;
+
+		//initial turn off-course
+		if(Dir==1) {
+			rSpeed = HALFSPEED * 2;
+			lSpeed = HALFSPEED / 2;
+		} else
+		{
+			lSpeed = HALFSPEED / 2;
+			rSpeed = HALFSPEED * 2;
+		}
+		int i;
+		for (i = 0; i < turnDuration; i += 10) {
+			sleep(10); //sleep in tiny increments so task can be stopped
+		}
+
+		//Turn back to the forward position
+		if(Dir==1) {
+			lSpeed = HALFSPEED / 2 ;
+			rSpeed = HALFSPEED * 2;
+		} else
+		{
+			lSpeed = HALFSPEED * 2;
+			rSpeed = HALFSPEED / 2;
+		}
+		for (i = 0; i < turnDuration; i += 10) {
+			sleep(10); //sleep in tiny increments so task can be stopped
+		}
+	}
+}
+
+/**Robot moves around the patch,
+* staying on the patch until full or task is stopped
+*/
+task feed(){
+	startTask(feedingInvertMotorsTask);
+	while (energyLevel < FULL) {
+		nxtDisplayTextLine(0, "Food: %d", energyLevel);
+		if (leftLumenance < WHITE || rightLumenance < WHITE) {
+			stopTask(feedingInvertMotorsTask);
+			oneEighty();
+			lSpeed = HALFSPEED;
+			rSpeed = HALFSPEED;
+			sleep(50); //go forward a bit
+			startTask(feedingInvertMotorsTask);
+		}
+	}
+	playTone(1000, 10);
+	feeding = false;
+	looking = true;
+	stopTask(feedingInvertMotorsTask);
+	startTask(watchForGradient);
+	startTask(invertMotorsTask); //finished with gradient following, start this task and return to normal
+}
+
+/**
+* Once a white triangle line is detected, this method will get on and follow.
+* Sensor1 that detected line will move onto the white until the Right sensor
+* is on the edge of white and green where it will follow.
+* If Left Sensor detects green, we are going down skinny end and need to turn around.
+* If Right detects a lot of white, we have reached the food circle.
+*/
+task followFoodLeft() {
+    //int runningSpeed = MOTOR_SPEED_NORMAL-5;
+		stopTask(invertMotorsTask);
+    bool online = true;
+    bool foundFood = false;
+    bool doOver = true;
+    float offset = 3.0;
+    int wrongWayCount = 0;
+    while (rightLumenance < WHITE) { //move until right gets on white
+    	lSpeed = BASESPEED; //will need a way to break out eventuallu
+    	rSpeed = BASESPEED;
+    }
+    while (doOver) {
+			online = true;
+
+			// quickly align right before beginning
+    	while (rightLumenance > WhGreen - offset) {
+    		lSpeed = BASESPEED * 2;
+      	rSpeed = BASESPEED * 0.3;
+    	}
+
+    	while (online) {
+		  	displayCenteredBigTextLine(7, "current: %d", leftLumenance);
+				clearTimer(T1); //wrong way timer
+				clearTimer(T2); //on food patch timer
+     	  while (rightLumenance < WhGreen - offset) {	// off right, too much green
+       		lSpeed = BASESPEED * 0.3;
+         	rSpeed = BASESPEED;
+          if (leftLumenance < WHITE) { //left is off white?
+         		if (time1(T2) > 200) { //went off the wrong way
+         			turnAroundLeft();
+         			online = false;
+         			wrongWayCount++;
+         			break;
+         		}
+         	}
+         	else {
+         		clearTimer(T2);
+         	}
+
+        }
+        if (!online) {
+        	break;
+        }
+       	clearTimer(T1);
+				clearTimer(T2);
+       	while (rightLumenance > WhGreen + offset) {	// off left, too much white
+        	lSpeed = BASESPEED;
+         	rSpeed = BASESPEED * 0.3;
+          if (leftLumenance < WHITE) { //left is off white?
+        		if (time1(T2) > 200) { //went off the wrong way
+          		turnAroundLeft();
+          		online = false;
+          		wrongWayCount++;
+          		break;
+         		}
+         	}
+         	else {
+         		clearTimer(T2);
+         	}
+           if (time1(T1) > 800){ //been on white a while, probably on food patch
+           	foundFood = true;
+      			online = false;
+      			doOver = false; //exit loop
+      			break;
+     			}
+       	}
+   		}
+   		if (wrongWayCount >= 2) {
+   			doOver = false; //something has gone wrong, exit
+   			break;
+   		}
+ 		}
+  	eraseDisplay();
+		nxtDisplayTextLine(2, "Found Food: %d", foundFood);
+		if (foundFood) { //rotate left about 90 degrees to face the circle hopefully
+			lSpeed = -50;
+			rSpeed = 50;
+			sleep(400); //is this enough turn? Extremely insensative for some reason
+			playTone(1000, 10);
+			lSpeed = BASESPEED;
+			rSpeed = BASESPEED;
+			sleep(300); //go forward a bit
+			feeding = true;
+			startTask(feed);
+		}
+		else {
+			looking = true;
+			startTask(invertMotorsTask);
+			startTask(watchForGradient);
+		}
+
+}
+
+task followFoodRight() {
+		stopTask(invertMotorsTask);
+    bool online = true;
+    bool foundFood = false;
+    bool doOver = true;
+    float offset = 3.0;
+    int wrongWayCount = 0;
+    bool check = true;
+    while (check) { //move until left gets on white
+    	lSpeed = BASESPEED; //TODO: will need a way to break out eventualluy
+    	rSpeed = BASESPEED;
+    	if (leftLumenance >= WHITE) { //check that leftLumenance spike
+    		sleep(20);
+    		if (leftLumenance >= WHITE) {
+    			check = false;
+    		}
+    	}
+
+    }
+    while (doOver) {
+			online = true;
+
+			// quickly align left before beginning
+    	while (leftLumenance > WhGreen - offset) {
+    		lSpeed = BASESPEED * 0.3;
+      	rSpeed = BASESPEED * 2;
+    	}
+
+    	while (online) {
+		  	displayCenteredBigTextLine(7, "current: %d", rightLumenance);
+				clearTimer(T1); //wrong way timer
+				clearTimer(T2); //on food patch timer
+     	  while (leftLumenance < WhGreen - offset) {	// off left, too much green
+       		lSpeed = BASESPEED;
+         	rSpeed = BASESPEED * 0.3;
+          if (rightLumenance < WHITE) { //right is off white?
+         		if (time1(T2) > 200) { //went off the wrong way
+         			turnAroundRight();
+         			online = false;
+         			wrongWayCount++;
+         			break;
+         		}
+         	}
+         	else {
+         		clearTimer(T2);
+         	}
+
+        }
+        if (!online) {
+        	break;
+        }
+       	clearTimer(T1);
+				clearTimer(T2);
+       	while (leftLumenance > WhGreen + offset) {	// off right, too much white
+        	lSpeed = BASESPEED * 0.3;
+         	rSpeed = BASESPEED;
+          if (rightLumenance < WHITE) { //right is off white?
+        		if (time1(T2) > 200) { //went off the wrong way
+          		turnAroundRight();
+          		online = false;
+          		wrongWayCount++;
+          		break;
+         		}
+         	}
+         	else {
+         		clearTimer(T2);
+         	}
+           if (time1(T1) > 800){ //been on white a while, probably on food patch
+           	foundFood = true;
+      			online = false;
+      			doOver = false; //exit loop
+      			break;
+     			}
+       	}
+   		}
+   		if (wrongWayCount >= 2) {
+   			doOver = false;
+   			break;
+   		}
+ 		}
+  	eraseDisplay();
+		nxtDisplayTextLine(2, "Found Food: %d", foundFood);
+		if (foundFood) { //rotate right about 90 degrees to face the circle hopefully
+			lSpeed = 50;
+			rSpeed = -50;
+			sleep(400); //is this enough turn? Extremely insensative for some reason
+			playTone(1000, 10);
+			lSpeed = BASESPEED;
+			rSpeed = BASESPEED;
+			sleep(300); //go forward a bit
+			feeding = true;
+			startTask(feed);
+		}
+		else {
+			looking = true;
+			startTask(invertMotorsTask);
+			startTask(watchForGradient);
+		}
+
+}
+
+task watchForGradient(){
+	while (looking) {
+	if (leftLumenance>=WHITE && looking && energyLevel < 90) {
+		sleep(50);
+		if (leftLumenance>=WHITE) {
+			looking = false; //be sure to set looking back to true if followFood tasks are interrupted
+			 /*leftLumanence calculations spiking up to over a thousand at random times
+			every few seconds, need to double check to throw it out.*/
+			startTask(followFoodLeft);
+			}
+		}
+		if (rightLumenance>=WHITE && looking && energyLevel < 90) {
+			sleep(50);
+			if (rightLumenance>=WHITE) {
+				looking = false; //be sure to set looking back to true if followFood tasks are interrupted
+				/*rightLumenance didn't look like it was spiking but I'm double checking anyway*/
+				startTask(followFoodRight);
+			}
 		}
 	}
 }
@@ -328,73 +703,75 @@ task getReadingTask()
 		}
 		if(cSuccess>=9) //indicates if we have a 90% success rate with distance
 			objectFound = true;
+		else
+			objectFound = false;
 	}
 }
 
-task energyRate()
+void fearCounter()
 {
-	while(true)
+	lightFlash = false;
+	counter = 0;
+	while(counter<60 && !lightFlash)
 	{
-		if(dead)
-			break;
-		else
-		{
-			while(FEEDING && energyLevel<=FULL)
-			{
-				energyLevel++;
-				wait1Msec(1000);
-			}
-			while(!FEEDING && !dead)
-			{
-				energyLevel--;
-				wait1Msec(2000);
-			}
-		}
+		counter++;
+		wait1Msec(1000);
 	}
 }
 
 task fearState()
 {
+	fearLevel = 100;
 	scared = false;
-	bool thirtyFlag = false;
-	while(!dead)
+	while(true)
 	{
-		if(!scared && fearLevel<100)
+		if(counter>=60)
+		{
+			scared = false;
+		}
+		while(fearLevel < 100 && !scared && !lightFlash)
 		{
 			fearLevel++;
 			wait1Msec(2400);
 		}
-		else if(State==ESCAPE && !scared)
+		if(lightFlash)
 		{
-			scared = true;
-			clearTimer(T1);
-		}
-		else if(State==ESCAPE && scared)
-		{
-			thirtyFlag=false;
-			clearTimer(T1);
-			if(fearLevel<=25)
-				fearLevel=0;
-			else fearLevel-=25;
-		}
-		else if(scared)
-		{
-			if(time1[T1]>=30000 && !thirtyFlag)
+			fearCounter();
+			if(scared)
 			{
-				clearTimer(T1);
-				thirtyFlag = true;
+				if(fearLevel<=25)
+					fearLevel = 0;
+				else
+					fearLevel -= 25;
 			}
-			else if(thirtyFlag && time1[T1]>=30000)
-			{
-				thirtyFlag = false;
-				scared = false;
-			}
+			if(!scared)
+				scared = true;
+			runAway();
 		}
 	}
 }
 
+task energyRate()
+{
+	while(!dead)
+	{
+		if(State==FEEDING && energyLevel<FULL)
+		{
+			energyLevel++;
+		}
+		else
+		{
+			energyLevel--;
+			wait1Msec(1000);
+		}
+		wait1Msec(1000);
+	}
+}
+
+
 task energyState()
 {
+	energyLevel = FULL;
 	while(1)
 	{
 		if(energyLevel>HUNGRY)
@@ -428,6 +805,21 @@ task energyState()
 	}
 }
 
+task displayValues()
+{
+	while(1)
+	{
+		eraseDisplay();
+		displayCenteredBigTextLine(1, "F=%d", fearLevel);
+		if(scared)
+			displayCenteredBigTextLine(3, "Scared");
+		else
+			displayCenteredBigTextLine(3, "!Scared");
+		displayCenteredBigTextLine(5, "%d", counter);
+		wait1Msec(100);
+	}
+}
+
 task main()
 {
 	startTask(runMotors);
@@ -437,51 +829,56 @@ task main()
 	startTask(invertMotorsTask);
 	startTask(energyRate);
 	startTask(commTask);
+	startTask(displayValues);
+	startTask(targetAquired);
 
-	energyLevel = FULL;
-	fearLevel = 100;
 	distance = SensorValue[ultraSonic];
 
 	while(true)
 	{
-		eraseDisplay();
-		displayCenteredBigTextLine(1, "F=%d", fearLevel);
-		displayCenteredBigTextLine(3, "E=%d", energyLevel);
-		displayCenteredBigTextLine(5, "%d", State);
 		if(dead) { //if we are dead
 			State = DEATH;
-			} else if (data[0] == 'y' || data[1] == 'y') { //bumper
+			}	else if (bump) { //bumper
 			State = AVOID;
-			} else if (data[2] == 'y' && fearLevel > 0 && !starving) { //fear light
+			} else if (escape && fearLevel > 0 && !starving) {
 			State = ESCAPE;
 			} else if (objectFound && !starving) { //found an object
 			State = INVESTIGATE;
 			} else if (feeding) { //found food
 			State = FEEDING;
-			} else if (hunting) { //found a scent
+			} else if (looking && !content) { //found a scent
 			State = HUNTING;
 			} else {
 			State = WANDER; //otherwise just wander around
 		}
 		switch(State) {
 		case DEATH: //are we dead?
-			lSpeed = STOP;
-			rSpeed = STOP;
+			scared = false;
+			bump = false;
+			feeding = false;
+			escape = false;
+			objectFound = false;
+			looking = false;
 			break;
 		case AVOID: //did we hit a bumper?
+			feeding = false;
+			objectFound = false;
+			looking = false;
 			obstacle();
 			break;
 		case ESCAPE: //are we afraid of light?
-			lSpeed = 0; //0 is placeholder
-			rSpeed = 0;//0 is placeholder
+			feeding = false;
+			objectFound = false;
+			looking = false;
 			break;
 		case INVESTIGATE: //did we find an object?
-			targetAquired();
+			looking = false;
+			objectFound = true;
 			break;
 		case FEEDING: //are we eating?
-			//eatingfunction
-			lSpeed = 0;//0 is placeholder
-			rSpeed = 0;//0 is placeholder
+			feeding = true;
+			break;
+		case HUNTING:
 			break;
 		case WANDER: //nothing is happening
 			break;
