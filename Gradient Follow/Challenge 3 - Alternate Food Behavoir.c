@@ -18,6 +18,7 @@
 #define MIN_DIST 3 //minimum distance for the robot to read
 #define BREAKOUTANGLE 22 //if the robot reads this angle from the gyro, breakout from line
 #define FULL 120
+#define HALFSPEED BASESPEED/2
 
 int GREEN = 33; //The Green/Gray color of the line pattern carpet floor tiles
 
@@ -127,38 +128,42 @@ task feedingInvertMotorsTask()
 	while(true)
 	{
 		int Dir = random[2];
-	//time is for turning duration, time2 is for the forward duration.
-	int turnDuration = 350;
+		//time is for turning duration, time2 is for the forward duration.
+		int turnDuration = (random[5]+1) * 350;
 
-	//initial turn off-course
-	if(Dir==1) {
-		rSpeed = BASESPEED * 2;
-		lSpeed = BASESPEED / 2;
-	} else
-	{
-		lSpeed = BASESPEED / 2;
-		rSpeed = BASESPEED * 2;
-	}
+		//initial turn off-course
+		if(Dir==1) {
+			rSpeed = HALFSPEED * 2;
+			lSpeed = HALFSPEED / 2;
+		} else
+		{
+			lSpeed = HALFSPEED / 2;
+			rSpeed = HALFSPEED * 2;
+		}
+		int i;
+		for (i = 0; i < turnDuration; i += 10) {
+			sleep(10); //sleep in tiny increments so task can be stopped
+		}
 
-	sleep(turnDuration);
-
-	//Turn back to the forward position
-	if(Dir==1) {
-		lSpeed = BASESPEED / 2 ;
-		rSpeed = BASESPEED * 2;
-	} else
-	{
-		lSpeed = BASESPEED * 2;
-		rSpeed = BASESPEED / 2;
-	}
-	sleep(turnDuration);
+		//Turn back to the forward position
+		if(Dir==1) {
+			lSpeed = HALFSPEED / 2 ;
+			rSpeed = HALFSPEED * 2;
+		} else
+		{
+			lSpeed = HALFSPEED * 2;
+			rSpeed = HALFSPEED / 2;
+		}
+		for (i = 0; i < turnDuration; i += 10) {
+			sleep(10); //sleep in tiny increments so task can be stopped
+		}
 	}
 }
 
 /**
 *Rotates right until it gets back on the triangle
 */
-void turnAround(){
+void turnAroundLeft(){
 	while (!(leftLumenance >= WHITE)){
 		lSpeed = 50;
 		rSpeed = -50;
@@ -166,12 +171,28 @@ void turnAround(){
 }
 
 /**
+*Rotates left until it gets back on the triangle
+*/
+void turnAroundRight(){
+	while (!(rightLumenance >= WHITE)){
+		lSpeed = -50;
+		rSpeed = 50;
+	}
+}
+
+/**
 *Rotates right about 180*
+*Might only turn about 30*, turning is highely random
+*then keeps turning until both are on white
 */
 void oneEighty(){
 	lSpeed = 50;
 	rSpeed = -50;
 	sleep(1000);
+	while(leftLumenance < WHITE || rightLumenance < WHITE) {
+		lSpeed = 50;
+		rSpeed = -50;
+	}
 }
 
 /**Robot moves around the patch,
@@ -181,18 +202,20 @@ task feed(){
 	startTask(feedingInvertMotorsTask);
 	while (energyLevel < FULL) {
 		nxtDisplayTextLine(0, "Food: %d", energyLevel);
-		if (leftLumenance <= WhGreen || rightLumenance <= WhGreen) {
+		if (leftLumenance < WHITE || rightLumenance < WHITE) {
 			stopTask(feedingInvertMotorsTask);
 			oneEighty();
-			lSpeed = BASESPEED;
-			rSpeed = BASESPEED;
-			sleep(200); //go forward a bit
+			playTone(1000, 5);
+			lSpeed = HALFSPEED;
+			rSpeed = HALFSPEED;
+			sleep(50); //go forward a bit
 			startTask(feedingInvertMotorsTask);
 		}
 	}
 	playTone(1000, 10);
 	feeding = false;
 	looking = true;
+	stopTask(feedingInvertMotorsTask);
 	startTask(invertMotorsTask); //finished with gradient following, start this task and return to normal
 }
 
@@ -207,7 +230,7 @@ int BREAKOUT = 1200;
 */
 task followFoodLeft() {
     //int runningSpeed = MOTOR_SPEED_NORMAL-5;
-    clearTimer(T3);
+		stopTask(invertMotorsTask);
     bool online = true;
     bool foundFood = false;
     bool doOver = true;
@@ -234,7 +257,7 @@ task followFoodLeft() {
          	rSpeed = BASESPEED;
           if (leftLumenance < WHITE) { //left is off white?
          		if (time1(T2) > 200) { //went off the wrong way
-         			turnAround();
+         			turnAroundLeft();
          			online = false; //TODO: Are we stuck in a loop?
          			break;
          		}
@@ -254,7 +277,7 @@ task followFoodLeft() {
          	rSpeed = BASESPEED * 0.3;
           if (leftLumenance < WHITE) { //left is off white?
         		if (time1(T2) > 200) { //went off the wrong way
-          		turnAround();
+          		turnAroundLeft();
           		online = false; // are we in a loop?
           		break;
          		}
@@ -289,6 +312,113 @@ task followFoodLeft() {
 			startTask(invertMotorsTask);
 		}
 
+}
+
+task followFoodRight() {
+		stopTask(invertMotorsTask);
+    bool online = true;
+    bool foundFood = false;
+    bool doOver = true;
+    float offset = 3.0;
+    while (leftLumenance < WHITE) { //move until left gets on white
+    	lSpeed = BASESPEED; //will need a way to break out eventuallu
+    	rSpeed = BASESPEED;
+    }
+    while (doOver) {
+			online = true;
+
+			// quickly align left before beginning
+    	while (leftLumenance > WhGreen - offset) {
+    		lSpeed = BASESPEED * 0.3;
+      	rSpeed = BASESPEED * 2;
+    	}
+
+    	while (online) {
+		  	displayCenteredBigTextLine(7, "current: %d", rightLumenance);
+				clearTimer(T1); //wrong way timer
+				clearTimer(T2); //on food patch timer
+     	  while (leftLumenance < WhGreen - offset) {	// off left, too much green
+       		lSpeed = BASESPEED;
+         	rSpeed = BASESPEED * 0.3;
+          if (rightLumenance < WHITE) { //right is off white?
+         		if (time1(T2) > 200) { //went off the wrong way
+         			turnAroundRight();
+         			online = false; //TODO: Are we stuck in a loop?
+         			break;
+         		}
+         	}
+         	else {
+         		clearTimer(T2);
+         	}
+
+        }
+        if (!online) {
+        	break;
+        }
+       	clearTimer(T1);
+				clearTimer(T2);
+       	while (leftLumenance > WhGreen + offset) {	// off right, too much white
+        	lSpeed = BASESPEED * 0.3;
+         	rSpeed = BASESPEED;
+          if (rightLumenance < WHITE) { //left is off white?
+        		if (time1(T2) > 200) { //went off the wrong way
+          		turnAroundRight();
+          		online = false; // are we in a loop?
+          		break;
+         		}
+         	}
+         	else {
+         		clearTimer(T2);
+         	}
+           if (time1(T1) > 800){ //been on white a while, probably on food patch
+           	foundFood = true;
+      			online = false;
+      			doOver = false; //exit loop
+      			break;
+     			}
+       	}
+   		}
+ 		}
+  	eraseDisplay();
+		nxtDisplayTextLine(2, "Found Food: %d", foundFood);
+		if (foundFood) { //rotate right about 90 degrees to face the circle hopefully
+			lSpeed = 50;
+			rSpeed = -50;
+			sleep(400); //is this enough turn? Extremely insensative for some reason
+			playTone(1000, 10);
+			lSpeed = BASESPEED;
+			rSpeed = BASESPEED;
+			sleep(300); //go forward a bit
+			feeding = true;
+			startTask(feed);
+		}
+		else {
+			looking = true;
+			startTask(invertMotorsTask);
+		}
+
+}
+
+task watchForGradient(){
+	while (looking) {
+	if (leftLumenance>=WHITE && looking && energyLevel < 90) {
+		sleep(50);
+		if (leftLumenance>=WHITE) {
+			looking = false; //be sure to set looking back to true if followFood tasks are interrupted
+			 /*leftLumanence calculations spiking up to over a thousand at random times
+			every few seconds, need to double check to throw it out.*/
+			startTask(followFoodLeft);
+			}
+		}
+		if (rightLumenance>=WHITE && looking && energyLevel < 90) {
+			sleep(50);
+			if (rightLumenance>=WHITE) {
+				looking = false; //be sure to set looking back to true if followFood tasks are interrupted
+				/*rightLumenance didn't look like it was spiking but I'm double checking anyway*/
+				startTask(followFoodRight);
+			}
+		}
+	}
 }
 
 /**
@@ -365,6 +495,14 @@ task main()
 				stopTask(displayColors); /*leftLumanence calculations spiking up to over a thousand at random times
 				every few seconds, need to double check to throw it out.*/
 				startTask(followFoodLeft);
+			}
+		}
+		if (rightLumenance>=WHITE && looking && energyLevel < 90) {
+			sleep(50);
+			if (rightLumenance>=WHITE) {
+				looking = false; //be sure to set looking back to true if followFood tasks are interrupted
+				stopTask(displayColors); /*rightLumenance didn't look like it was spiking but I'm double checking anyway*/
+				startTask(followFoodRight);
 			}
 		}
 	}
