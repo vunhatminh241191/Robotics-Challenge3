@@ -239,7 +239,7 @@ task followFoodLeft() {
     float offset = 3.0;
     int wrongWayCount = 0;
     while (rightLumenance < WHITE) { //move until right gets on white
-    	lSpeed = BASESPEED; //will need a way to break out eventuallu
+    	lSpeed = BASESPEED; //will need a way to break out eventually
     	rSpeed = BASESPEED;
     }
     while (doOver) {
@@ -298,7 +298,7 @@ task followFoodLeft() {
      			}
        	}
    		}
-   		if (wrongWayCount >= 2) {
+   		if (wrongWayCount >= 20) {
    			doOver = false; //something has gone wrong, exit
    			break;
    		}
@@ -399,7 +399,7 @@ task followFoodRight() {
      			}
        	}
    		}
-   		if (wrongWayCount >= 2) {
+   		if (wrongWayCount >= 20) {
    			doOver = false;
    			break;
    		}
