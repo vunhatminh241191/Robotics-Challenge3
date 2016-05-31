@@ -16,12 +16,12 @@ task bumpChecker()
 		//if left bumb -> move right
 		if (SensorValue(rightBumper)==1)
 		{
-			data[0] = 'y';
+			data[1] = 'y';
 		}
 		//if right bump -> move left
 		if (SensorValue(leftBumper)==1)
 		{
-			data[1] = 'y';
+			data[0] = 'y';
 		}
 	}
 }
@@ -67,7 +67,7 @@ task main()
 	startTask(displayValues);
 	while(true)
 	{
-		wait1Msec(100);
+		wait1Msec(200);
 		transmitData();
 	}
 }
