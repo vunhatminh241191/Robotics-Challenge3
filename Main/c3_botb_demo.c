@@ -43,6 +43,8 @@ bool feeding = false;
 bool looking = true;
 bool objectFound = false; //flag for priority if object is found
 bool lightFlash = false; //flag for when light flashes top sensor
+bool leftWhite = false;
+bool rightWhite = false;
 
 int WhGreen = (WHITE + GREEN)/2 ; //46, The color that keeps on the line of white and green
 int energyLevel;
@@ -358,7 +360,7 @@ task invertMotorsTask()
 *Rotates right until it gets back on the triangle
 */
 void turnAroundLeft(){
-	while (!(leftLumenance >= WHITE) && (State==FEEDING || State==HUNTING)){
+	while (!(leftWhite) && (State==FEEDING || State==HUNTING)){
 		lSpeed = 50;
 		rSpeed = -50;
 	}
@@ -368,7 +370,7 @@ void turnAroundLeft(){
 *Rotates left until it gets back on the triangle
 */
 void turnAroundRight(){
-	while (!(rightLumenance >= WHITE) && (State==FEEDING || State==HUNTING)){
+	while (!(rightWhite) && (State==FEEDING || State==HUNTING)){
 		lSpeed = -50;
 		rSpeed = 50;
 	}
@@ -383,7 +385,8 @@ void oneEighty(){
 	lSpeed = 50;
 	rSpeed = -50;
 	sleep(1000);
-	while((leftLumenance < WHITE || rightLumenance < WHITE) && (State==FEEDING || State==HUNTING)) {
+	while((leftWhite && rightWhite) && (State==FEEDING || State==HUNTING)) {
+		//playTone(3000, 200);
 		lSpeed = 50;
 		rSpeed = -50;
 	}
@@ -454,7 +457,7 @@ task feed(){
 		{
 			while (energyLevel < FULL && State==FEEDING) {
 				//nxtDisplayTextLine(0, "Food: %d", energyLevel);
-				if (leftLumenance < WHITE || rightLumenance < WHITE) {
+				if (leftWhite || rightWhite) {
 					//stopTask(feedingInvertMotorsTask);
 					oneEighty();
 					if(State==FEEDING)
@@ -499,7 +502,7 @@ task followFoodLeft() {
 	{
 		while(State==HUNTING && !followingFood)
 		{
-			while (rightLumenance < WHITE && State==HUNTING) { //move until right gets on white
+			while (!rightWhite && State==HUNTING) { //move until right gets on white
 				lSpeed = BASESPEED; //will need a way to break out eventuallu
 				rSpeed = BASESPEED;
 			}
@@ -520,7 +523,7 @@ task followFoodLeft() {
 						//playTone(1000, 1);
 						lSpeed = BASESPEED * 0.3;
 						rSpeed = BASESPEED;
-						if (leftLumenance < WHITE && State==HUNTING) { //left is off white?
+						if (!leftWhite && State==HUNTING) { //left is off white?
 							if (time1(T2) > 200) { //went off the wrong way
 								turnAroundLeft();
 								online = false;
@@ -541,7 +544,7 @@ task followFoodLeft() {
 					while (rightLumenance > WhGreen + offset && State==HUNTING) {	// off left, too much white
 						lSpeed = BASESPEED;
 						rSpeed = BASESPEED * 0.3;
-						if (leftLumenance < WHITE) { //left is off white?
+						if (!leftWhite) { //left is off white?
 							if (time1(T2) > 200) { //went off the wrong way
 								turnAroundLeft();
 								online = false;
@@ -605,9 +608,9 @@ task followFoodRight() {
 			while (check && State==HUNTING) { //move until left gets on white
 				lSpeed = BASESPEED; //TODO: will need a way to break out eventualluy
 				rSpeed = BASESPEED;
-				if (leftLumenance >= WHITE) { //check that leftLumenance spike
+				if (leftWhite) { //check that leftLumenance spike
 					sleep(20);
-					if (leftLumenance >= WHITE) {
+					if (leftWhite) {
 						check = false;
 					}
 				}
@@ -701,49 +704,22 @@ task watchForGradient()
 {
 	while(true)
 	{
-		while (looking && energyLevel < HUNGRY) {
-			if (leftLumenance>=WHITE) {
+		while (looking && !content) {
+			if (leftWhite) {
 				sleep(50);
-				if (leftLumenance>=WHITE) {
+				if (leftWhite) {
 					looking = false; //be sure to set looking back to true if followFood tasks are interrupted
 					/*leftLumanence calculations spiking up to over a thousand at random times
 					every few seconds, need to double check to throw it out.*/
 				}
 			}
-			else if (rightLumenance>=WHITE) {
+			else if (rightWhite) {
 				sleep(50);
-				if (rightLumenance>=WHITE) {
+				if (rightWhite) {
 					looking = false; //be sure to set looking back to true if followFood tasks are interrupted
 					/*rightLumenance didn't look like it was spiking but I'm double checking anyway*/
 				}
 			}
-		}
-	}
-}
-
-/**
-*Task that continually samples the light sensors to find when
-*either one is on black or white or neither.
-**/
-task lightSensorTask()
-{
-	int leftLums, rightLums = 0;
-	int lSuccess= 0;
-	int i,j;
-	while(true)
-	{
-		lSuccess = 0;
-		for(j = 0; j < 4; j++) //we need to ignore false positives
-		{
-			leftLums = 0;
-			rightLums = 0;
-			for(i = 0;i<SAMPLES;i++) //we need to find a good reading
-			{
-				leftLums += SensorValue[leftLight];
-				rightLums += SensorValue[rightLight];
-			}
-			leftLumenance = leftLums/SAMPLES;
-			rightLumenance = rightLums/SAMPLES;
 		}
 	}
 }
@@ -782,6 +758,47 @@ task getReadingTask()
 			objectFound = true;
 		else
 			objectFound = false;
+	}
+}
+
+/**
+*Task that continually samples the light sensors to find when
+*either one is on black or white or neither.
+**/
+task lightSensorTask()
+{
+	short leftLums, rightLums;
+	int lSuccess = 0;
+	int rSuccess = 0;
+	int i,j;
+	while(true)
+	{
+		lSuccess = 0;
+		rSuccess = 0;
+		for(j = 0; j < 4; j++) //we need to ignore false positives
+		{
+			leftLums = 0;
+			rightLums = 0;
+			for(i = 0;i<SAMPLES;i++) //we need to find a good reading
+			{
+				leftLums += sensorValue[leftLight];
+				rightLums += sensorValue(rightLight);
+			}
+			leftLumenance = leftLums/SAMPLES;
+			rightLumenance = rightLums/SAMPLES;
+			if(leftLumenance>=WHITE)
+				lSuccess++;
+			if(rightLumenance>=WHITE)
+				rSuccess++;
+		}
+		if(lSuccess>=3)//if the reading has a 75% success rate
+			leftWhite = true;
+		else
+			leftWhite = false;
+		if(rSuccess>=3)
+			rightWhite = true;
+		else
+			rightWhite = false;
 	}
 }
 
@@ -913,10 +930,10 @@ task displayValues()
 		eraseDisplay();
 		displayCenteredBigTextLine(1, "E=%d", energyLevel);
 		displayCenteredBigTextLine(3, "S=%d", State);
-		if(feeding)
-			displayCenteredBigTextLine(5, "feed");
+		if(leftWhite)
+			displayCenteredBigTextLine(5, "LW");
 		else
-			displayCenteredBigTextLine(5, "!feed");
+			displayCenteredBigTextLine(5, "!LW");
 	}
 }
 
@@ -956,7 +973,7 @@ task main()
 			State = INVESTIGATE;
 			} else if (feeding && energyLevel < FULL) { //found food
 			State = FEEDING; //foodFound !replaces feeding
-			} else if (!feeding && !content) { //found a scent
+			} else if ((rightWhite || leftWhite) && !content) { //found a scent
 			State = HUNTING; //got rid of looking
 			} else {
 			State = WANDER; //otherwise just wander around
@@ -982,19 +999,19 @@ task main()
 		case AVOID: //did we hit a bumper?
 			feeding = false;
 			objectFound = false;
-			//looking = true;
+			looking = true;
 			obstacle();
 			bump = false;
 			break;
 		case ESCAPE: //are we afraid of light?
 			feeding = false;
 			objectFound = false;
-			//looking = true;
+			looking = true;
 			break;
 		case INVESTIGATE: //did we find an object?
 			feeding = false;
 			//objectFound = true;
-			//looking = true;
+			looking = true;
 			break;
 		case FEEDING: //are we eating?
 			break;
