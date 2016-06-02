@@ -6,7 +6,8 @@
 /*
 * THIS ROBOT CONTROLS THE TOP LIGHT SENSOR, AND THE TWO BUMPERS
 */
-
+//short ambientLight;
+short currentLight;
 ubyte data[] = {'n', 'n', 'n'};//{'LeftBumper', 'RightBumper', 'TopLight'}
 
 task bumpChecker()
@@ -28,12 +29,11 @@ task bumpChecker()
 
 task lightChecker()
 {
-	short ambientLight = SensorValue[fearLight];
-	short currentLight;
+	//ambientLight = SensorValue[fearLight];
 	while(true)
 	{
 		currentLight = SensorValue[fearLight];
-		if(currentLight>=ambientLight+10)
+		if(currentLight>=70)
 		{
 			data[2] = 'y';
 		}
@@ -53,7 +53,9 @@ task displayValues()
 	while(1)
 	{
 		eraseDisplay();
-		displayCenteredBigTextLine(3, "%c%c", data[0], data[1]);
+		displayCenteredBigTextLine(1, "%c%c%c", data[0], data[1], data[2]);
+		//displayCenteredBigTextLine(3, "Amb=%d", ambientLight);
+		displayCenteredBigTextLine(5, "CL=%d", currentLight);
 	}
 }
 task main()
