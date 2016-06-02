@@ -32,7 +32,7 @@
 
 //flags
 //bool foodFound = false;
-bool followingFood = false;
+bool followingFood = false; //definetely do this
 bool content = false;
 bool hungry = false;
 bool starving = false;
@@ -45,6 +45,11 @@ bool objectFound = false; //flag for priority if object is found
 bool lightFlash = false; //flag for when light flashes top sensor
 bool leftWhite = false;
 bool rightWhite = false;
+bool followLeft = false; //followFood left or right
+int findingGradient; //need this flag as mutex for WatchForGradient
+//0 = ready to change (BEGAN HUNTING), 1 = locked (HUNTING),
+//2 = unlocked but not ready (NOT HUNTING)
+bool areWeHunting = false; //need this flag to prevent early HUNTING exit in main switch
 
 int WhGreen = (WHITE + GREEN)/2 ; //46, The color that keeps on the line of white and green
 int energyLevel;
@@ -376,17 +381,25 @@ void turnAroundRight(){
 	}
 }
 
+int oneEightyCount;
+
 /**
 *Rotates right about 180*
 *Might only turn about 30*, turning is highely random
 *then keeps turning until both are on white
 */
 void oneEighty(){
+
 	lSpeed = 50;
 	rSpeed = -50;
 	sleep(1000);
-	while((leftWhite && rightWhite) && (State==FEEDING || State==HUNTING)) {
+	clearTimer(T2);
+	while((!leftWhite || !rightWhite) && (State==FEEDING || State==HUNTING)) {
 		//playTone(3000, 200);
+		if (time1[T2] > 1000) {
+			oneEightyCount++;
+			break;
+		}
 		lSpeed = 50;
 		rSpeed = -50;
 	}
@@ -451,15 +464,19 @@ task feedingInvertMotorsTask()
 * staying on the patch until full or task is stopped
 */
 task feed(){
+
 	while(true)
 	{
 		if(State==FEEDING)
 		{
+			clearTimer(T1);
+			oneEightyCount = 0;
 			while (energyLevel < FULL && State==FEEDING) {
 				//nxtDisplayTextLine(0, "Food: %d", energyLevel);
-				if (leftWhite || rightWhite) {
+				if (!leftWhite || !rightWhite) {
 					//stopTask(feedingInvertMotorsTask);
 					oneEighty();
+					oneEightyCount++;
 					if(State==FEEDING)
 					{
 						lSpeed = HALFSPEED;
@@ -472,6 +489,18 @@ task feed(){
 					}
 					sleep(50); //go forward a bit
 					//startTask(feedingInvertMotorsTask);
+					if (time1[T1] > 3000) {
+						if (oneEightyCount >= 3) { //spinning too much, we are lost
+							playTone(600, 65);
+							feeding = false;
+							//State = WANDER;
+						}
+						else { //it's fine, reset
+							clearTimer(T1);
+							oneEightyCount = 0;
+						}
+					}
+
 				}
 			}
 		}
@@ -492,16 +521,16 @@ task feed(){
 * If Right detects a lot of white, we have reached the food circle.
 */
 task followFoodLeft() {
-	followingFood = true;
-	bool online = true;
-	bool foundFood = false;
-	bool doOver = true;
 	float offset = 3.0;
-	int wrongWayCount = 0;
 	while(true)
-	{
-		while(State==HUNTING && !followingFood)
+	{//followingFood set below, followLeft set in main switch
+		while(State==HUNTING && !followingFood && followLeft)
 		{
+			followingFood = true; //locks main while so only left or right runs
+			bool online = true;
+			bool foundFood = false;
+			bool doOver = true;
+			int wrongWayCount = 0;
 			while (!rightWhite && State==HUNTING) { //move until right gets on white
 				lSpeed = BASESPEED; //will need a way to break out eventuallu
 				rSpeed = BASESPEED;
@@ -517,8 +546,8 @@ task followFoodLeft() {
 
 				while (online && State==HUNTING) {
 					//displayCenteredBigTextLine(7, "current: %d", leftLumenance);
-					clearTimer(T1); //wrong way timer
-					clearTimer(T2); //on food patch timer
+					clearTimer(T1); //on food patch timer
+					clearTimer(T2); //wrong way timer
 					while (rightLumenance < WhGreen - offset && State==HUNTING) {	// off right, too much green
 						//playTone(1000, 1);
 						lSpeed = BASESPEED * 0.3;
@@ -555,7 +584,8 @@ task followFoodLeft() {
 						else {
 							clearTimer(T2);
 						}
-						if (time1(T1) > 800){ //been on white a while, probably on food patch
+						if (time1(T1) > 1000){ //been on white a while, probably on food patch
+							playTone(500, 150);
 							foundFood = true;
 							online = false;
 							doOver = false; //exit loop
@@ -565,6 +595,7 @@ task followFoodLeft() {
 				}
 				if (wrongWayCount >= 20) {
 					doOver = false; //something has gone wrong, exit
+					areWeHunting = false;
 					break;
 				}
 			}
@@ -594,17 +625,17 @@ task followFoodLeft() {
 }
 
 task followFoodRight() {
-	followingFood = true;
-	bool online = true;
-	bool foundFood = false;
-	bool doOver = true;
 	float offset = 3.0;
-	int wrongWayCount = 0;
-	bool check = true;
 	while(true)
-	{
-		while(State==HUNTING && !followingFood)
+	{//followingFood set below, followLeft set in main switch
+		while(State==HUNTING && !followingFood && !followLeft)
 		{
+			followingFood = true;
+			bool online = true;
+			bool foundFood = false;
+			bool doOver = true;
+			int wrongWayCount = 0;
+			bool check = true;
 			while (check && State==HUNTING) { //move until left gets on white
 				lSpeed = BASESPEED; //TODO: will need a way to break out eventualluy
 				rSpeed = BASESPEED;
@@ -664,7 +695,8 @@ task followFoodRight() {
 						else {
 							clearTimer(T2);
 						}
-						if (time1(T1) > 800){ //been on white a while, probably on food patch
+						if (time1(T1) > 1000){ //been on white a while, probably on food patch
+							playTone(500, 150);
 							foundFood = true;
 							online = false;
 							doOver = false; //exit loop
@@ -674,6 +706,7 @@ task followFoodRight() {
 				}
 				if (wrongWayCount >= 20) {
 					doOver = false;
+					areWeHunting = false;
 					break;
 				}
 			}
@@ -700,26 +733,16 @@ task followFoodRight() {
 	}
 }
 
+/**
+*Have no other way to tell the program if left or right
+*sensor hit gradient which is neccesary
+*/
 task watchForGradient()
 {
-	while(true)
-	{
-		while (looking && !content) {
-			if (leftWhite) {
-				sleep(50);
-				if (leftWhite) {
-					looking = false; //be sure to set looking back to true if followFood tasks are interrupted
-					/*leftLumanence calculations spiking up to over a thousand at random times
-					every few seconds, need to double check to throw it out.*/
-				}
-			}
-			else if (rightWhite) {
-				sleep(50);
-				if (rightWhite) {
-					looking = false; //be sure to set looking back to true if followFood tasks are interrupted
-					/*rightLumenance didn't look like it was spiking but I'm double checking anyway*/
-				}
-			}
+	while (true) {
+	if (findingGradient == 0) { //lock this when on gradient, else unlock
+			followLeft = (leftLumenance >= rightLumenance);
+			findingGradient = 1; //don't change until we leave HUNTING
 		}
 	}
 }
@@ -959,6 +982,7 @@ task main()
 	startTask(lightSensorTask);
 	startTask(fearCounter);
 
+	findingGradient = 2; //set to unlocked
 	distance = SensorValue[ultraSonic];
 
 	while(true)
@@ -973,8 +997,8 @@ task main()
 			State = INVESTIGATE;
 			} else if (feeding && energyLevel < FULL) { //found food
 			State = FEEDING; //foodFound !replaces feeding
-			} else if ((rightWhite || leftWhite) && !content) { //found a scent
-			State = HUNTING; //got rid of looking
+			} else if ((rightWhite || leftWhite || areWeHunting) && !content) { //found a scent
+				State = HUNTING; //got rid of looking
 			} else {
 			State = WANDER; //otherwise just wander around
 		}
@@ -1002,22 +1026,37 @@ task main()
 			looking = true;
 			obstacle();
 			bump = false;
+			findingGradient = 2;
+			areWeHunting = false;
 			break;
 		case ESCAPE: //are we afraid of light?
 			feeding = false;
 			objectFound = false;
 			looking = true;
+			findingGradient = 2;
+			areWeHunting = false;
 			break;
 		case INVESTIGATE: //did we find an object?
 			feeding = false;
 			//objectFound = true;
 			looking = true;
+			findingGradient = 2;
+			areWeHunting = false;
 			break;
 		case FEEDING: //are we eating?
+			findingGradient = 2;
+			areWeHunting = false;
 			break;
 		case HUNTING:
+			if (findingGradient == 2) {
+				findingGradient = 0;
+			}
+			areWeHunting = true;
 			break;
 		case WANDER: //nothing is happen
+			findingGradient = 2;
+			areWeHunting = false;
+			followingFood = false; //probably uneeded but just to be safe
 			break;
 		}
 	}
